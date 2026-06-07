@@ -1,0 +1,15 @@
+# GitHub Pages configuration
+# Theme
+theme: null
+
+# Exclude files
+exclude:
+  - node_modules
+  - .git
+  - .gitignore
+  - package.json
+  - package-lock.json
+
+# Site configuration
+title: AzureNotes
+description: Aplikasi web catatan modern untuk mencatat semua ide dan kegiatan

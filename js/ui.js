@@ -1,37 +1,69 @@
-// UI Manager - Mengelola tampilan dan interaksi
+// UI Manager - Mengelola tampilan catatan dan interaksi UI
 class UIManager {
-    constructor(noteManager) {
-        this.noteManager = noteManager;
-        this.currentEditId = null;
-        this.currentFilter = null;
+    constructor(database) {
+        this.database = database;
+        this.currentEditingNoteId = null;
         this.initializeElements();
+        this.attachEventListeners();
     }
 
     // Inisialisasi elemen DOM
     initializeElements() {
+        // Main elements
         this.notesContainer = document.getElementById('notesContainer');
         this.searchInput = document.getElementById('searchInput');
+        this.filterTags = document.getElementById('filterTags');
         this.newNoteBtn = document.getElementById('newNoteBtn');
-        this.modal = document.getElementById('noteModal');
+
+        // Modal elements
+        this.noteModal = document.getElementById('noteModal');
         this.modalTitle = document.getElementById('modalTitle');
         this.noteTitle = document.getElementById('noteTitle');
         this.noteContent = document.getElementById('noteContent');
         this.noteTags = document.getElementById('noteTags');
-        this.saveBtn = document.getElementById('saveBtn');
-        this.cancelBtn = document.getElementById('cancelBtn');
-        this.deleteBtn = document.getElementById('deleteBtn');
         this.closeModalBtn = document.getElementById('closeModalBtn');
-        this.filterTags = document.getElementById('filterTags');
+        this.cancelBtn = document.getElementById('cancelBtn');
+        this.saveBtn = document.getElementById('saveBtn');
+        this.deleteBtn = document.getElementById('deleteBtn');
+
+        // Toast
         this.toast = document.getElementById('toast');
     }
 
+    // Attach event listeners
+    attachEventListeners() {
+        this.newNoteBtn.addEventListener('click', () => this.openNewNoteModal());
+        this.searchInput.addEventListener('input', () => this.handleSearch());
+        this.closeModalBtn.addEventListener('click', () => this.closeModal());
+        this.cancelBtn.addEventListener('click', () => this.closeModal());
+        this.saveBtn.addEventListener('click', () => this.handleSaveNote());
+        this.deleteBtn.addEventListener('click', () => this.handleDeleteNote());
+
+        // Close modal on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.noteModal.classList.contains('show')) {
+                this.closeModal();
+            }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                e.preventDefault();
+                this.openNewNoteModal();
+            }
+        });
+    }
+
+    // ===== NOTE DISPLAY =====
+
     // Render semua catatan
-    renderNotes() {
-        let notes = this.noteManager.searchNotes(this.searchInput.value);
-        
-        if (this.currentFilter) {
-            notes = notes.filter(note => note.tags.includes(this.currentFilter));
+    renderNotes(notes = null) {
+        if (!notes) {
+            notes = this.database.getUserNotes();
         }
+
+        this.notesContainer.innerHTML = '';
 
         if (notes.length === 0) {
             this.notesContainer.innerHTML = `
@@ -43,143 +75,191 @@ class UIManager {
             return;
         }
 
-        this.notesContainer.innerHTML = notes.map(note => this.createNoteCard(note)).join('');
-        
-        // Tambah event listeners ke note cards
-        document.querySelectorAll('.note-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const id = parseInt(card.dataset.id);
-                this.openEditModal(id);
-            });
+        notes.forEach(note => {
+            const noteCard = this.createNoteCard(note);
+            this.notesContainer.appendChild(noteCard);
         });
+
+        this.updateFilterTags();
     }
 
-    // Buat card untuk satu catatan
+    // Buat note card element
     createNoteCard(note) {
-        const tagsHTML = note.tags.map(tag => 
-            `<span class="note-tag">${this.escapeHtml(tag)}</span>`
-        ).join('');
-
-        return `
-            <div class="note-card" data-id="${note.id}">
-                <div class="note-title">${this.escapeHtml(note.title)}</div>
-                <div class="note-content">${this.escapeHtml(note.content)}</div>
-                <div class="note-date">📅 ${note.updatedAt}</div>
-                <div class="note-tags">${tagsHTML}</div>
+        const card = document.createElement('div');
+        card.className = 'note-card';
+        card.innerHTML = `
+            <div class="note-card-title">${this.escapeHtml(note.title)}</div>
+            <div class="note-card-content">${this.escapeHtml(note.content)}</div>
+            <div class="note-card-date">${note.updatedAt}</div>
+            <div class="note-card-tags">
+                ${note.tags.map(tag => `<span class="note-tag">${this.escapeHtml(tag)}</span>`).join('')}
             </div>
         `;
+
+        card.addEventListener('click', () => this.openEditNoteModal(note.id));
+
+        return card;
     }
 
-    // Render filter tags
-    renderFilterTags() {
-        const tags = this.noteManager.getAllTags();
-        
-        if (tags.length === 0) {
-            this.filterTags.innerHTML = '';
-            return;
-        }
+    // Update filter tags
+    updateFilterTags() {
+        const allTags = this.database.getAllUserTags();
+        this.filterTags.innerHTML = '';
 
-        this.filterTags.innerHTML = tags.map(tag => {
-            const count = this.noteManager.countByTag(tag);
-            const isActive = this.currentFilter === tag ? 'active' : '';
-            return `
-                <button class="tag-btn ${isActive}" data-tag="${this.escapeHtml(tag)}">
-                    ${this.escapeHtml(tag)} (${count})
-                </button>
+        if (allTags.length === 0) return;
+
+        allTags.forEach(tag => {
+            const tagButton = document.createElement('button');
+            tagButton.className = 'tag-filter';
+            tagButton.innerHTML = `
+                ${this.escapeHtml(tag)}
+                <span class="tag-filter-remove">×</span>
             `;
-        }).join('');
 
-        // Tambah event listeners ke filter buttons
-        document.querySelectorAll('.tag-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const tag = btn.dataset.tag;
-                this.currentFilter = this.currentFilter === tag ? null : tag;
-                this.renderFilterTags();
-                this.renderNotes();
+            tagButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.filterByTag(tag);
             });
+
+            this.filterTags.appendChild(tagButton);
         });
     }
 
-    // Buka modal untuk catatan baru
-    openNewModal() {
-        this.currentEditId = null;
-        this.modalTitle.textContent = 'Catatan Baru';
+    // ===== SEARCH & FILTER =====
+
+    // Handle search
+    handleSearch() {
+        const query = this.searchInput.value;
+        const notes = this.database.searchUserNotes(query);
+        this.renderNotes(notes);
+    }
+
+    // Filter by tag
+    filterByTag(tag) {
+        const notes = this.database.filterUserNotesByTag(tag);
+        
+        // Update UI to show selected tag
+        this.filterTags.querySelectorAll('.tag-filter').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.textContent.trim().startsWith(tag)) {
+                btn.classList.add('active');
+            }
+        });
+
+        this.renderNotes(notes);
+    }
+
+    // Clear filter
+    clearFilter() {
+        this.filterTags.querySelectorAll('.tag-filter').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        this.searchInput.value = '';
+        this.renderNotes();
+    }
+
+    // ===== MODAL MANAGEMENT =====
+
+    // Open new note modal
+    openNewNoteModal() {
+        this.currentEditingNoteId = null;
+        this.modalTitle.textContent = '📝 Catatan Baru';
         this.noteTitle.value = '';
         this.noteContent.value = '';
         this.noteTags.value = '';
         this.deleteBtn.style.display = 'none';
-        this.modal.classList.add('show');
+        this.openModal();
+        this.noteTitle.focus();
     }
 
-    // Buka modal untuk edit catatan
-    openEditModal(id) {
-        const note = this.noteManager.getNote(id);
-        if (!note) return;
+    // Open edit note modal
+    openEditNoteModal(noteId) {
+        const note = this.database.getNoteById(noteId);
+        if (!note) {
+            this.showToast('Catatan tidak ditemukan!', 'error');
+            return;
+        }
 
-        this.currentEditId = id;
-        this.modalTitle.textContent = 'Edit Catatan';
+        this.currentEditingNoteId = noteId;
+        this.modalTitle.textContent = '✏️ Edit Catatan';
         this.noteTitle.value = note.title;
         this.noteContent.value = note.content;
         this.noteTags.value = note.tags.join(', ');
-        this.deleteBtn.style.display = 'inline-flex';
-        this.modal.classList.add('show');
+        this.deleteBtn.style.display = 'inline-block';
+        this.openModal();
+        this.noteTitle.focus();
     }
 
-    // Tutup modal
+    // Open modal
+    openModal() {
+        this.noteModal.classList.add('show');
+    }
+
+    // Close modal
     closeModal() {
-        this.modal.classList.remove('show');
-        this.currentEditId = null;
+        this.noteModal.classList.remove('show');
+        this.currentEditingNoteId = null;
+        this.noteTitle.value = '';
+        this.noteContent.value = '';
+        this.noteTags.value = '';
     }
 
-    // Simpan catatan
-    saveNote() {
+    // ===== NOTE OPERATIONS =====
+
+    // Handle save note
+    handleSaveNote() {
         const title = this.noteTitle.value.trim();
         const content = this.noteContent.value.trim();
         const tags = this.noteTags.value.trim();
 
-        if (!title || !content) {
-            this.showToast('Judul dan konten tidak boleh kosong!', 'error');
+        if (!title && !content) {
+            this.showToast('Catatan tidak boleh kosong!', 'error');
             return;
         }
 
-        if (this.currentEditId) {
+        let result;
+
+        if (this.currentEditingNoteId) {
             // Update existing note
-            this.noteManager.updateNote(this.currentEditId, {
+            result = this.database.updateUserNote(
+                this.currentEditingNoteId,
                 title,
                 content,
                 tags
-            });
-            this.showToast('Catatan berhasil diperbarui! ✏️');
+            );
         } else {
-            // Add new note
-            this.noteManager.addNote({
-                title,
-                content,
-                tags
-            });
-            this.showToast('Catatan baru berhasil dibuat! ✅');
+            // Create new note
+            result = this.database.addNoteForUser(title, content, tags);
         }
 
-        this.closeModal();
-        this.renderNotes();
-        this.renderFilterTags();
-    }
-
-    // Hapus catatan
-    deleteNote() {
-        if (!this.currentEditId) return;
-
-        if (confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
-            this.noteManager.deleteNote(this.currentEditId);
-            this.showToast('Catatan berhasil dihapus! 🗑️');
+        if (result.success) {
+            this.showToast(result.message, 'success');
             this.closeModal();
             this.renderNotes();
-            this.renderFilterTags();
+        } else {
+            this.showToast(result.message, 'error');
         }
     }
 
-    // Tampilkan toast notification
+    // Handle delete note
+    handleDeleteNote() {
+        if (!this.currentEditingNoteId) return;
+
+        if (confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
+            const result = this.database.deleteUserNote(this.currentEditingNoteId);
+
+            if (result.success) {
+                this.showToast(result.message, 'success');
+                this.closeModal();
+                this.renderNotes();
+            } else {
+                this.showToast(result.message, 'error');
+            }
+        }
+    }
+
+    // ===== TOAST NOTIFICATION =====
+
     showToast(message, type = 'success') {
         this.toast.textContent = message;
         this.toast.className = `toast show ${type}`;
@@ -189,43 +269,21 @@ class UIManager {
         }, 3000);
     }
 
-    // Escape HTML untuk keamanan
+    // ===== HELPER FUNCTIONS =====
+
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
 
-    // Attach event listeners
-    attachEventListeners() {
-        this.newNoteBtn.addEventListener('click', () => this.openNewModal());
-        this.saveBtn.addEventListener('click', () => this.saveNote());
-        this.cancelBtn.addEventListener('click', () => this.closeModal());
-        this.deleteBtn.addEventListener('click', () => this.deleteNote());
-        this.closeModalBtn.addEventListener('click', () => this.closeModal());
-        
-        this.searchInput.addEventListener('input', () => {
-            this.renderNotes();
-        });
-
-        // Tutup modal jika klik di luar
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                this.closeModal();
-            }
-        });
-
-        // Shortcut keyboard
-        document.addEventListener('keydown', (e) => {
-            // Ctrl+N atau Cmd+N untuk catatan baru
-            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
-                e.preventDefault();
-                this.openNewModal();
-            }
-            // Esc untuk tutup modal
-            if (e.key === 'Escape') {
-                this.closeModal();
-            }
-        });
+    // Refresh display
+    refresh() {
+        this.renderNotes();
     }
+}
+
+// Export untuk digunakan di module lain
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = UIManager;
 }

@@ -1,17 +1,41 @@
-// Main App - Inisialisasi aplikasi
-document.addEventListener('DOMContentLoaded', () => {
-    // Inisialisasi manager
-    const noteManager = new NoteManager();
-    const uiManager = new UIManager(noteManager);
+// Main App - Koordinator aplikasi
+class AzureNotesApp {
+    constructor() {
+        this.database = new Database();
+        this.authManager = new AuthManager(this.database);
+        this.uiManager = new UIManager(this.database);
+        this.initialize();
+    }
 
-    // Render awal
-    uiManager.renderNotes();
-    uiManager.renderFilterTags();
+    // Inisialisasi aplikasi
+    initialize() {
+        // Check auth status
+        this.authManager.checkAuthStatus();
 
-    // Attach event listeners
-    uiManager.attachEventListeners();
+        // Load notes jika user sudah login
+        if (this.database.isLoggedIn()) {
+            this.uiManager.renderNotes();
+        }
+    }
 
-    // Log untuk development
-    console.log('🚀 AzureNotes App Started');
-    console.log('📝 Total notes:', noteManager.notes.length);
-});
+    // Start aplikasi
+    start() {
+        console.log('🚀 AzureNotes aplikasi dimulai!');
+    }
+}
+
+// Inisialisasi aplikasi ketika DOM sudah siap
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        window.app = new AzureNotesApp();
+        window.app.start();
+    });
+} else {
+    window.app = new AzureNotesApp();
+    window.app.start();
+}
+
+// Export untuk digunakan di module lain
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = AzureNotesApp;
+}

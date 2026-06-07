@@ -1,0 +1,22 @@
+{
+  "name": "AzureNotes",
+  "version": "1.0.0",
+  "description": "Aplikasi web catatan modern untuk mencatat semua ide dan kegiatan",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 8000",
+    "dev": "npx serve ."
+  },
+  "keywords": [
+    "notes",
+    "catatan",
+    "webapp",
+    "javascript"
+  ],
+  "author": "azure551",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/azure551/AzureNotes.git"
+  }
+}
